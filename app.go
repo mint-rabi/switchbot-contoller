@@ -159,6 +159,22 @@ func (a *App) RefreshSwitchBotScenes() (SwitchBotSceneList, error) {
 	}, nil
 }
 
+func (a *App) ExecuteSwitchBotScene(sceneID string) error {
+	if a.config == nil {
+		return fmt.Errorf("config store is not available")
+	}
+	if a.client == nil {
+		a.client = newSwitchBotClient()
+	}
+
+	credentials, err := a.config.LoadSwitchBotCredentials()
+	if err != nil {
+		return err
+	}
+
+	return a.client.ExecuteScene(credentials, sceneID)
+}
+
 func (a *App) OpenConfigFolder() error {
 	if a.config == nil {
 		return fmt.Errorf("config store is not available")

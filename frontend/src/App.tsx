@@ -2,6 +2,7 @@ import {FormEvent, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import {
     ClearSwitchBotCredentials,
+    ExecuteSwitchBotScene,
     GetCachedSwitchBotDevices,
     GetCachedSwitchBotScenes,
     GetSwitchBotCredentialStatus,
@@ -35,6 +36,7 @@ function App() {
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isRefreshingScenes, setIsRefreshingScenes] = useState(false);
+    const [executingSceneId, setExecutingSceneId] = useState('');
     const [deviceList, setDeviceList] = useState<main.SwitchBotDeviceList>(new main.SwitchBotDeviceList());
     const [sceneList, setSceneList] = useState<main.SwitchBotSceneList>(new main.SwitchBotSceneList());
 
@@ -130,6 +132,20 @@ function App() {
                 setScenesMessage(error instanceof Error ? error.message : String(error));
             })
             .finally(() => setIsRefreshingScenes(false));
+    }
+
+    function executeScene(scene: main.SwitchBotScene) {
+        setExecutingSceneId(scene.sceneId);
+        setScenesMessage('');
+
+        ExecuteSwitchBotScene(scene.sceneId)
+            .then(() => {
+                setScenesMessage(`${scene.sceneName || scene.sceneId} を実行しました。`);
+            })
+            .catch((error) => {
+                setScenesMessage(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => setExecutingSceneId(''));
     }
 
     function saveCredentials(event: FormEvent<HTMLFormElement>) {
@@ -284,17 +300,27 @@ function App() {
                             <tr>
                                 <th>Name</th>
                                 <th>Scene ID</th>
+                                <th>Action</th>
                             </tr>
                             </thead>
                             <tbody>
                             {(sceneList.scenes?.length ?? 0) === 0 ? (
                                 <tr>
-                                    <td colSpan={2} className="empty-cell">シーンはまだ表示されていません。</td>
+                                    <td colSpan={3} className="empty-cell">シーンはまだ表示されていません。</td>
                                 </tr>
                             ) : sceneList.scenes.map((scene) => (
                                 <tr key={scene.sceneId}>
                                     <td>{scene.sceneName || '-'}</td>
                                     <td className="mono">{scene.sceneId || '-'}</td>
+                                    <td>
+                                        <button
+                                            className="btn table-action"
+                                            onClick={() => executeScene(scene)}
+                                            disabled={!credentialsSaved || executingSceneId === scene.sceneId}
+                                        >
+                                            {executingSceneId === scene.sceneId ? 'Running...' : 'Run'}
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                             </tbody>

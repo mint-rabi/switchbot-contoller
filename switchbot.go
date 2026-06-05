@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,7 +11,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -91,7 +94,7 @@ func newSwitchBotClient() *switchBotClient {
 }
 
 func (c *switchBotClient) FetchDevices(credentials SwitchBotCredentials) (SwitchBotDeviceCache, error) {
-	body, err := c.get(credentials, switchBotDevicesURL)
+	body, err := c.request(credentials, http.MethodGet, switchBotDevicesURL, nil)
 	if err != nil {
 		return SwitchBotDeviceCache{}, fmt.Errorf("request switchbot devices: %w", err)
 	}
@@ -112,7 +115,7 @@ func (c *switchBotClient) FetchDevices(credentials SwitchBotCredentials) (Switch
 }
 
 func (c *switchBotClient) FetchScenes(credentials SwitchBotCredentials) (SwitchBotSceneCache, error) {
-	body, err := c.get(credentials, switchBotScenesURL)
+	body, err := c.request(credentials, http.MethodGet, switchBotScenesURL, nil)
 	if err != nil {
 		return SwitchBotSceneCache{}, fmt.Errorf("request switchbot scenes: %w", err)
 	}
@@ -131,8 +134,37 @@ func (c *switchBotClient) FetchScenes(credentials SwitchBotCredentials) (SwitchB
 	}, nil
 }
 
-func (c *switchBotClient) get(credentials SwitchBotCredentials, url string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (c *switchBotClient) ExecuteScene(credentials SwitchBotCredentials, sceneID string) error {
+	sceneID = strings.TrimSpace(sceneID)
+	if sceneID == "" {
+		return fmt.Errorf("scene id is required")
+	}
+
+	body, err := c.request(credentials, http.MethodPost, fmt.Sprintf("%s/%s/execute", switchBotScenesURL, url.PathEscape(sceneID)), nil)
+	if err != nil {
+		return fmt.Errorf("execute switchbot scene: %w", err)
+	}
+
+	var apiResp struct {
+		StatusCode int    `json:"statusCode"`
+		Message    string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
+	if apiResp.StatusCode != 100 {
+		return fmt.Errorf("switchbot api returned status %d: %s", apiResp.StatusCode, apiResp.Message)
+	}
+	return nil
+}
+
+func (c *switchBotClient) request(credentials SwitchBotCredentials, method string, url string, body []byte) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -155,14 +187,14 @@ func (c *switchBotClient) get(credentials SwitchBotCredentials, url string) ([]b
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("switchbot api returned HTTP %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("switchbot api returned HTTP %d: %s", resp.StatusCode, string(responseBody))
 	}
-	return body, nil
+	return responseBody, nil
 }
 
 func switchBotSign(token string, secret string, timestamp string, nonce string) string {

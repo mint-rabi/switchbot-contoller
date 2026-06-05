@@ -185,7 +185,7 @@
 }
 
 .scene-table {
-    min-width: 520px;
+    min-width: 640px;
 }
 
 .device-table th,
@@ -220,6 +220,13 @@
     height: 72px;
     text-align: center;
     color: rgba(255, 255, 255, 0.56);
+}
+
+.table-action {
+    min-width: 84px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.22);
 }
 
 @media (max-width: 720px) {
