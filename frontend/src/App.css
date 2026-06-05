@@ -179,7 +179,7 @@
 
 .device-table {
     width: 100%;
-    min-width: 860px;
+    min-width: 980px;
     border-collapse: collapse;
     background: rgba(255, 255, 255, 0.05);
 }
@@ -227,6 +227,20 @@
     background: rgba(255, 255, 255, 0.14);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.power-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.power-actions .table-action {
+    min-width: 58px;
+}
+
+.muted-text {
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 13px;
 }
 
 @media (max-width: 720px) {

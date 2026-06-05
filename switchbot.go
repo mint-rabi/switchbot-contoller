@@ -158,6 +158,48 @@ func (c *switchBotClient) ExecuteScene(credentials SwitchBotCredentials, sceneID
 	return nil
 }
 
+func (c *switchBotClient) ExecuteDevicePower(credentials SwitchBotCredentials, deviceID string, turnOn bool) error {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return fmt.Errorf("device id is required")
+	}
+
+	command := "turnOff"
+	if turnOn {
+		command = "turnOn"
+	}
+
+	requestBody, err := json.Marshal(struct {
+		Command     string `json:"command"`
+		Parameter   string `json:"parameter"`
+		CommandType string `json:"commandType"`
+	}{
+		Command:     command,
+		Parameter:   "default",
+		CommandType: "command",
+	})
+	if err != nil {
+		return fmt.Errorf("encode command: %w", err)
+	}
+
+	responseBody, err := c.request(credentials, http.MethodPost, fmt.Sprintf("%s/%s/commands", switchBotDevicesURL, url.PathEscape(deviceID)), requestBody)
+	if err != nil {
+		return fmt.Errorf("execute switchbot device command: %w", err)
+	}
+
+	var apiResp struct {
+		StatusCode int    `json:"statusCode"`
+		Message    string `json:"message"`
+	}
+	if err := json.Unmarshal(responseBody, &apiResp); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
+	if apiResp.StatusCode != 100 {
+		return fmt.Errorf("switchbot api returned status %d: %s", apiResp.StatusCode, apiResp.Message)
+	}
+	return nil
+}
+
 func (c *switchBotClient) request(credentials SwitchBotCredentials, method string, url string, body []byte) ([]byte, error) {
 	var reader io.Reader
 	if body != nil {

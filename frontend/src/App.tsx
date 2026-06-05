@@ -2,6 +2,7 @@ import {FormEvent, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import {
     ClearSwitchBotCredentials,
+    ExecuteSwitchBotDevicePower,
     ExecuteSwitchBotScene,
     GetCachedSwitchBotDevices,
     GetCachedSwitchBotScenes,
@@ -21,6 +22,7 @@ type DeviceRow = {
     hubDeviceId: string;
     category: 'Device' | 'IR Remote';
     cloud?: boolean;
+    powerControllable: boolean;
 };
 
 function App() {
@@ -37,6 +39,7 @@ function App() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isRefreshingScenes, setIsRefreshingScenes] = useState(false);
     const [executingSceneId, setExecutingSceneId] = useState('');
+    const [executingDeviceAction, setExecutingDeviceAction] = useState('');
     const [deviceList, setDeviceList] = useState<main.SwitchBotDeviceList>(new main.SwitchBotDeviceList());
     const [sceneList, setSceneList] = useState<main.SwitchBotSceneList>(new main.SwitchBotSceneList());
 
@@ -53,17 +56,39 @@ function App() {
             type: device.deviceType,
             hubDeviceId: device.hubDeviceId,
             category: 'Device' as const,
-            cloud: device.enableCloudService
+            cloud: device.enableCloudService,
+            powerControllable: isPowerControllable('Device', device.deviceType)
         }));
         const infraredRemotes = (deviceList.infraredRemotes ?? []).map((remote) => ({
             id: remote.deviceId,
             name: remote.deviceName,
             type: remote.remoteType,
             hubDeviceId: remote.hubDeviceId,
-            category: 'IR Remote' as const
+            category: 'IR Remote' as const,
+            powerControllable: isPowerControllable('IR Remote', remote.remoteType)
         }));
         return [...devices, ...infraredRemotes];
     }, [deviceList]);
+
+    function isPowerControllable(category: DeviceRow['category'], type: string) {
+        const normalizedType = type.toLowerCase();
+        if (category === 'IR Remote') {
+            return !['others', 'unknown'].includes(normalizedType);
+        }
+
+        const unavailableTypeParts = [
+            'hub',
+            'meter',
+            'sensor',
+            'remote',
+            'button',
+            'motion',
+            'contact',
+            'lock',
+            'keypad'
+        ];
+        return !unavailableTypeParts.some((part) => normalizedType.includes(part));
+    }
 
     function refreshCredentialStatus(redirectWhenMissing = false) {
         GetSwitchBotCredentialStatus().then((status) => {
@@ -146,6 +171,21 @@ function App() {
                 setScenesMessage(error instanceof Error ? error.message : String(error));
             })
             .finally(() => setExecutingSceneId(''));
+    }
+
+    function executeDevicePower(row: DeviceRow, turnOn: boolean) {
+        const actionKey = `${row.id}-${turnOn ? 'on' : 'off'}`;
+        setExecutingDeviceAction(actionKey);
+        setDevicesMessage('');
+
+        ExecuteSwitchBotDevicePower(row.id, turnOn)
+            .then(() => {
+                setDevicesMessage(`${row.name || row.id} を ${turnOn ? 'On' : 'Off'} にしました。`);
+            })
+            .catch((error) => {
+                setDevicesMessage(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => setExecutingDeviceAction(''));
     }
 
     function saveCredentials(event: FormEvent<HTMLFormElement>) {
@@ -360,6 +400,7 @@ function App() {
                                 <th>Type</th>
                                 <th>Category</th>
                                 <th>Cloud</th>
+                                <th>Power</th>
                                 <th>Device ID</th>
                                 <th>Hub ID</th>
                             </tr>
@@ -367,7 +408,7 @@ function App() {
                             <tbody>
                             {rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="empty-cell">デバイスはまだ表示されていません。</td>
+                                    <td colSpan={7} className="empty-cell">デバイスはまだ表示されていません。</td>
                                 </tr>
                             ) : rows.map((row) => (
                                 <tr key={`${row.category}-${row.id}`}>
@@ -375,6 +416,28 @@ function App() {
                                     <td>{row.type || '-'}</td>
                                     <td>{row.category}</td>
                                     <td>{row.category === 'Device' ? (row.cloud ? 'Enabled' : 'Disabled') : '-'}</td>
+                                    <td>
+                                        {row.powerControllable ? (
+                                            <div className="power-actions">
+                                                <button
+                                                    className="btn table-action"
+                                                    onClick={() => executeDevicePower(row, true)}
+                                                    disabled={!credentialsSaved || executingDeviceAction === `${row.id}-on`}
+                                                >
+                                                    {executingDeviceAction === `${row.id}-on` ? 'On...' : 'On'}
+                                                </button>
+                                                <button
+                                                    className="btn table-action"
+                                                    onClick={() => executeDevicePower(row, false)}
+                                                    disabled={!credentialsSaved || executingDeviceAction === `${row.id}-off`}
+                                                >
+                                                    {executingDeviceAction === `${row.id}-off` ? 'Off...' : 'Off'}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span className="muted-text">Power unavailable</span>
+                                        )}
+                                    </td>
                                     <td className="mono">{row.id || '-'}</td>
                                     <td className="mono">{row.hubDeviceId || '-'}</td>
                                 </tr>

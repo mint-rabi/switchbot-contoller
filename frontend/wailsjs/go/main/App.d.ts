@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function ClearSwitchBotCredentials():Promise<void>;
 
+export function ExecuteSwitchBotDevicePower(arg1:string,arg2:boolean):Promise<void>;
+
 export function ExecuteSwitchBotScene(arg1:string):Promise<void>;
 
 export function GetCachedSwitchBotDevices():Promise<main.SwitchBotDeviceList>;

@@ -6,6 +6,10 @@ export function ClearSwitchBotCredentials() {
   return window['go']['main']['App']['ClearSwitchBotCredentials']();
 }
 
+export function ExecuteSwitchBotDevicePower(arg1, arg2) {
+  return window['go']['main']['App']['ExecuteSwitchBotDevicePower'](arg1, arg2);
+}
+
 export function ExecuteSwitchBotScene(arg1) {
   return window['go']['main']['App']['ExecuteSwitchBotScene'](arg1);
 }
