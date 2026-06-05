@@ -1,37 +1,61 @@
-import {ChangeEvent, FormEvent, useEffect, useState} from 'react';
-import logo from './assets/images/logo-universal.png';
+import {FormEvent, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import {
     ClearSwitchBotCredentials,
+    GetCachedSwitchBotDevices,
     GetSwitchBotCredentialStatus,
-    Greet,
     OpenConfigFolder,
+    RefreshSwitchBotDevices,
     SaveSwitchBotCredentials
 } from "../wailsjs/go/main/App";
+import {main} from "../wailsjs/go/models";
 
-type View = 'home' | 'settings';
+type View = 'devices' | 'settings';
+type DeviceRow = {
+    id: string;
+    name: string;
+    type: string;
+    hubDeviceId: string;
+    category: 'Device' | 'IR Remote';
+    cloud?: boolean;
+};
 
 function App() {
-    const [resultText, setResultText] = useState("Please enter your name below 👇");
-    const [name, setName] = useState('');
-    const [view, setView] = useState<View>('home');
+    const [view, setView] = useState<View>('devices');
     const [credentialsSaved, setCredentialsSaved] = useState(false);
     const [configExists, setConfigExists] = useState(false);
     const [configPath, setConfigPath] = useState('');
     const [token, setToken] = useState('');
     const [secret, setSecret] = useState('');
     const [settingsMessage, setSettingsMessage] = useState('');
+    const [devicesMessage, setDevicesMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
-    const updateName = (e: ChangeEvent<HTMLInputElement>) => setName(e.target.value);
-    const updateResultText = (result: string) => setResultText(result);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [deviceList, setDeviceList] = useState<main.SwitchBotDeviceList>(new main.SwitchBotDeviceList());
 
     useEffect(() => {
         refreshCredentialStatus(true);
+        loadCachedDevices();
     }, []);
 
-    function greet() {
-        Greet(name).then(updateResultText);
-    }
+    const rows = useMemo<DeviceRow[]>(() => {
+        const devices = (deviceList.devices ?? []).map((device) => ({
+            id: device.deviceId,
+            name: device.deviceName,
+            type: device.deviceType,
+            hubDeviceId: device.hubDeviceId,
+            category: 'Device' as const,
+            cloud: device.enableCloudService
+        }));
+        const infraredRemotes = (deviceList.infraredRemotes ?? []).map((remote) => ({
+            id: remote.deviceId,
+            name: remote.deviceName,
+            type: remote.remoteType,
+            hubDeviceId: remote.hubDeviceId,
+            category: 'IR Remote' as const
+        }));
+        return [...devices, ...infraredRemotes];
+    }, [deviceList]);
 
     function refreshCredentialStatus(redirectWhenMissing = false) {
         GetSwitchBotCredentialStatus().then((status) => {
@@ -40,7 +64,7 @@ function App() {
             setConfigPath(status.configPath);
             if (!status.saved && redirectWhenMissing) {
                 setView('settings');
-                setSettingsMessage('SwitchBot API token and secret are required before using the app.');
+                setSettingsMessage('SwitchBot API token と secret を保存してください。');
             }
         }).catch((error) => {
             setSettingsMessage(error instanceof Error ? error.message : String(error));
@@ -48,6 +72,32 @@ function App() {
                 setView('settings');
             }
         });
+    }
+
+    function loadCachedDevices() {
+        GetCachedSwitchBotDevices()
+            .then((cache) => {
+                setDeviceList(cache);
+                setDevicesMessage(cache.cached ? '' : 'まだデバイス一覧のキャッシュがありません。再取得してください。');
+            })
+            .catch((error) => {
+                setDevicesMessage(error instanceof Error ? error.message : String(error));
+            });
+    }
+
+    function refreshDevices() {
+        setIsRefreshing(true);
+        setDevicesMessage('');
+
+        RefreshSwitchBotDevices()
+            .then((cache) => {
+                setDeviceList(cache);
+                setDevicesMessage(`デバイス一覧を更新しました。${formatCachedAt(cache.cachedAt)}`);
+            })
+            .catch((error) => {
+                setDevicesMessage(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => setIsRefreshing(false));
     }
 
     function saveCredentials(event: FormEvent<HTMLFormElement>) {
@@ -62,12 +112,12 @@ function App() {
                 setConfigExists(status.exists);
                 setConfigPath(status.configPath);
                 if (!status.exists || !status.saved) {
-                    throw new Error(status.error || `Credentials were not found after saving: ${status.configPath}`);
+                    throw new Error(status.error || `保存後の認証情報が見つかりません: ${status.configPath}`);
                 }
                 setToken('');
                 setSecret('');
-                setSettingsMessage(`Credentials saved: ${status.configPath}`);
-                setView('home');
+                setSettingsMessage(`認証情報を保存しました: ${status.configPath}`);
+                setView('devices');
             })
             .catch((error) => {
                 setSettingsMessage(error instanceof Error ? error.message : String(error));
@@ -82,7 +132,8 @@ function App() {
                 setConfigExists(false);
                 setToken('');
                 setSecret('');
-                setSettingsMessage('Credentials removed.');
+                setDeviceList(new main.SwitchBotDeviceList());
+                setSettingsMessage('認証情報とキャッシュを削除しました。');
                 setView('settings');
             })
             .catch((error) => {
@@ -96,19 +147,36 @@ function App() {
         });
     }
 
-    if (view === 'settings') {
-        return (
-            <div id="App" className="app-shell">
-                <header className="top-bar">
-                    <button className="nav-button" onClick={() => setView('home')} disabled={!credentialsSaved}>
-                        Back
-                    </button>
-                    <div className="status-pill">{credentialsSaved && configExists ? 'Saved' : 'Setup required'}</div>
-                </header>
+    function formatCachedAt(value?: string) {
+        if (!value) {
+            return '未取得';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+        return date.toLocaleString();
+    }
 
+    return (
+        <div id="App" className="app-shell">
+            <header className="top-bar">
+                <div className="app-title">SwitchBot Controller</div>
+                <nav className="nav-tabs" aria-label="Primary">
+                    <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')} disabled={!credentialsSaved}>
+                        Devices
+                    </button>
+                    <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
+                        Settings
+                    </button>
+                </nav>
+                <div className="status-pill">{credentialsSaved && configExists ? 'Ready' : 'Setup required'}</div>
+            </header>
+
+            {view === 'settings' ? (
                 <main className="settings-panel">
                     <h1>SwitchBot Settings</h1>
-                    <p className="settings-lead">Enter your API token and secret. They are encrypted before being written to local JSON.</p>
+                    <p className="settings-lead">API token と secret を保存します。値はローカル JSON に暗号化して保存されます。</p>
 
                     <form className="credential-form" onSubmit={saveCredentials}>
                         <label>
@@ -153,24 +221,63 @@ function App() {
                         </div>
                     )}
                 </main>
-            </div>
-        );
-    }
+            ) : (
+                <main className="devices-panel">
+                    <section className="devices-header">
+                        <div>
+                            <h1>Devices</h1>
+                            <p>Cached at: {formatCachedAt(deviceList.cachedAt)}</p>
+                        </div>
+                        <button className="btn primary" onClick={refreshDevices} disabled={!credentialsSaved || isRefreshing}>
+                            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                    </section>
 
-    return (
-        <div id="App" className="app-shell home-screen">
-            <header className="top-bar">
-                <button className="nav-button" onClick={() => setView('settings')}>
-                    Settings
-                </button>
-                <div className="status-pill">{credentialsSaved && configExists ? 'Credentials saved' : 'Setup required'}</div>
-            </header>
-            <img src={logo} id="logo" alt="logo"/>
-            <div id="result" className="result">{resultText}</div>
-            <div id="input" className="input-box">
-                <input id="name" className="input" onChange={updateName} autoComplete="off" name="input" type="text"/>
-                <button className="btn" onClick={greet}>Greet</button>
-            </div>
+                    {devicesMessage && <div className="settings-message">{devicesMessage}</div>}
+
+                    <section className="device-summary" aria-label="Device summary">
+                        <div>
+                            <span>{deviceList.devices?.length ?? 0}</span>
+                            Devices
+                        </div>
+                        <div>
+                            <span>{deviceList.infraredRemotes?.length ?? 0}</span>
+                            IR Remotes
+                        </div>
+                    </section>
+
+                    <div className="device-table-wrap">
+                        <table className="device-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Category</th>
+                                <th>Cloud</th>
+                                <th>Device ID</th>
+                                <th>Hub ID</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {rows.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="empty-cell">デバイスはまだ表示されていません。</td>
+                                </tr>
+                            ) : rows.map((row) => (
+                                <tr key={`${row.category}-${row.id}`}>
+                                    <td>{row.name || '-'}</td>
+                                    <td>{row.type || '-'}</td>
+                                    <td>{row.category}</td>
+                                    <td>{row.category === 'Device' ? (row.cloud ? 'Enabled' : 'Disabled') : '-'}</td>
+                                    <td className="mono">{row.id || '-'}</td>
+                                    <td className="mono">{row.hubDeviceId || '-'}</td>
+                                </tr>
+                            ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </main>
+            )}
         </div>
     );
 }

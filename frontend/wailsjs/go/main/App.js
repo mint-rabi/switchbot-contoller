@@ -6,6 +6,10 @@ export function ClearSwitchBotCredentials() {
   return window['go']['main']['App']['ClearSwitchBotCredentials']();
 }
 
+export function GetCachedSwitchBotDevices() {
+  return window['go']['main']['App']['GetCachedSwitchBotDevices']();
+}
+
 export function GetSwitchBotCredentialStatus() {
   return window['go']['main']['App']['GetSwitchBotCredentialStatus']();
 }
@@ -16,6 +20,10 @@ export function Greet(arg1) {
 
 export function OpenConfigFolder() {
   return window['go']['main']['App']['OpenConfigFolder']();
+}
+
+export function RefreshSwitchBotDevices() {
+  return window['go']['main']['App']['RefreshSwitchBotDevices']();
 }
 
 export function SaveSwitchBotCredentials(arg1, arg2) {

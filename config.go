@@ -28,8 +28,9 @@ type SwitchBotCredentials struct {
 }
 
 type appConfig struct {
-	Version   int             `json:"version"`
-	SwitchBot switchBotConfig `json:"switchbot"`
+	Version     int                  `json:"version"`
+	SwitchBot   switchBotConfig      `json:"switchbot"`
+	DeviceCache SwitchBotDeviceCache `json:"deviceCache,omitempty"`
 }
 
 type switchBotConfig struct {
@@ -89,15 +90,53 @@ func (s *configStore) SaveSwitchBotCredentials(token string, secret string) erro
 		return fmt.Errorf("encrypt secret: %w", err)
 	}
 
-	cfg := appConfig{
-		Version: configVersion,
-		SwitchBot: switchBotConfig{
-			Token:  encryptedToken,
-			Secret: encryptedSecret,
-		},
+	cfg, err := s.loadOrDefault()
+	if err != nil {
+		return err
+	}
+
+	cfg.Version = configVersion
+	cfg.SwitchBot = switchBotConfig{
+		Token:  encryptedToken,
+		Secret: encryptedSecret,
 	}
 
 	return s.save(cfg)
+}
+
+func (s *configStore) SaveSwitchBotDeviceCache(cache SwitchBotDeviceCache) error {
+	cfg, err := s.loadOrDefault()
+	if err != nil {
+		return err
+	}
+
+	cfg.Version = configVersion
+	cfg.DeviceCache = cache
+	return s.save(cfg)
+}
+
+func (s *configStore) LoadSwitchBotDeviceCache() (SwitchBotDeviceCache, error) {
+	cfg, err := s.load()
+	if err != nil {
+		return SwitchBotDeviceCache{}, err
+	}
+	if cfg.DeviceCache.CachedAt == "" {
+		return SwitchBotDeviceCache{}, os.ErrNotExist
+	}
+	return cfg.DeviceCache, nil
+}
+
+func (s *configStore) loadOrDefault() (appConfig, error) {
+	cfg, err := s.load()
+	if err == nil {
+		return cfg, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return appConfig{}, err
+	}
+	return appConfig{
+		Version: configVersion,
+	}, nil
 }
 
 func (s *configStore) LoadSwitchBotCredentials() (SwitchBotCredentials, error) {

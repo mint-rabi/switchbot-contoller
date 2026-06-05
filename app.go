@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
@@ -11,6 +13,7 @@ import (
 type App struct {
 	ctx    context.Context
 	config *configStore
+	client *switchBotClient
 }
 
 // NewApp creates a new App application struct
@@ -20,7 +23,10 @@ func NewApp() *App {
 		fmt.Println("Error:", err.Error())
 	}
 
-	return &App{config: config}
+	return &App{
+		config: config,
+		client: newSwitchBotClient(),
+	}
 }
 
 // startup is called when the app starts. The context is saved
@@ -53,6 +59,56 @@ func (a *App) ClearSwitchBotCredentials() error {
 		return fmt.Errorf("config store is not available")
 	}
 	return a.config.ClearSwitchBotCredentials()
+}
+
+func (a *App) GetCachedSwitchBotDevices() (SwitchBotDeviceList, error) {
+	if a.config == nil {
+		return SwitchBotDeviceList{}, fmt.Errorf("config store is not available")
+	}
+
+	cache, err := a.config.LoadSwitchBotDeviceCache()
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return SwitchBotDeviceList{}, err
+		}
+		return SwitchBotDeviceList{Cached: false}, nil
+	}
+
+	return SwitchBotDeviceList{
+		Devices:         cache.Devices,
+		InfraredRemotes: cache.InfraredRemotes,
+		CachedAt:        cache.CachedAt,
+		Cached:          true,
+	}, nil
+}
+
+func (a *App) RefreshSwitchBotDevices() (SwitchBotDeviceList, error) {
+	if a.config == nil {
+		return SwitchBotDeviceList{}, fmt.Errorf("config store is not available")
+	}
+	if a.client == nil {
+		a.client = newSwitchBotClient()
+	}
+
+	credentials, err := a.config.LoadSwitchBotCredentials()
+	if err != nil {
+		return SwitchBotDeviceList{}, err
+	}
+
+	cache, err := a.client.FetchDevices(credentials)
+	if err != nil {
+		return SwitchBotDeviceList{}, err
+	}
+	if err := a.config.SaveSwitchBotDeviceCache(cache); err != nil {
+		return SwitchBotDeviceList{}, err
+	}
+
+	return SwitchBotDeviceList{
+		Devices:         cache.Devices,
+		InfraredRemotes: cache.InfraredRemotes,
+		CachedAt:        cache.CachedAt,
+		Cached:          true,
+	}, nil
 }
 
 func (a *App) OpenConfigFolder() error {

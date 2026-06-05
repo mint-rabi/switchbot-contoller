@@ -41,3 +41,34 @@ func TestConfigStoreSavesEncryptedSwitchBotCredentials(t *testing.T) {
 		t.Fatalf("credentials = %#v, want token and secret round trip", credentials)
 	}
 }
+
+func TestConfigStorePreservesDeviceCacheWhenSavingCredentials(t *testing.T) {
+	store := &configStore{
+		path: filepath.Join(t.TempDir(), configFileName),
+	}
+
+	cache := SwitchBotDeviceCache{
+		CachedAt: "2026-06-05T10:00:00+09:00",
+		Devices: []SwitchBotDevice{
+			{DeviceID: "device-1", DeviceName: "Desk Bot", DeviceType: "Bot"},
+		},
+		InfraredRemotes: []SwitchBotInfraredRemote{
+			{DeviceID: "remote-1", DeviceName: "TV", RemoteType: "TV"},
+		},
+	}
+
+	if err := store.SaveSwitchBotDeviceCache(cache); err != nil {
+		t.Fatalf("SaveSwitchBotDeviceCache() error = %v", err)
+	}
+	if err := store.SaveSwitchBotCredentials("token", "secret"); err != nil {
+		t.Fatalf("SaveSwitchBotCredentials() error = %v", err)
+	}
+
+	got, err := store.LoadSwitchBotDeviceCache()
+	if err != nil {
+		t.Fatalf("LoadSwitchBotDeviceCache() error = %v", err)
+	}
+	if got.CachedAt != cache.CachedAt || len(got.Devices) != 1 || len(got.InfraredRemotes) != 1 {
+		t.Fatalf("cache = %#v, want preserved cache", got)
+	}
+}
