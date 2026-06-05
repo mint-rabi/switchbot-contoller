@@ -3,14 +3,16 @@ import './App.css';
 import {
     ClearSwitchBotCredentials,
     GetCachedSwitchBotDevices,
+    GetCachedSwitchBotScenes,
     GetSwitchBotCredentialStatus,
     OpenConfigFolder,
     RefreshSwitchBotDevices,
+    RefreshSwitchBotScenes,
     SaveSwitchBotCredentials
 } from "../wailsjs/go/main/App";
 import {main} from "../wailsjs/go/models";
 
-type View = 'devices' | 'settings';
+type View = 'devices' | 'scenes' | 'settings';
 type DeviceRow = {
     id: string;
     name: string;
@@ -29,13 +31,17 @@ function App() {
     const [secret, setSecret] = useState('');
     const [settingsMessage, setSettingsMessage] = useState('');
     const [devicesMessage, setDevicesMessage] = useState('');
+    const [scenesMessage, setScenesMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isRefreshingScenes, setIsRefreshingScenes] = useState(false);
     const [deviceList, setDeviceList] = useState<main.SwitchBotDeviceList>(new main.SwitchBotDeviceList());
+    const [sceneList, setSceneList] = useState<main.SwitchBotSceneList>(new main.SwitchBotSceneList());
 
     useEffect(() => {
         refreshCredentialStatus(true);
         loadCachedDevices();
+        loadCachedScenes();
     }, []);
 
     const rows = useMemo<DeviceRow[]>(() => {
@@ -85,6 +91,17 @@ function App() {
             });
     }
 
+    function loadCachedScenes() {
+        GetCachedSwitchBotScenes()
+            .then((cache) => {
+                setSceneList(cache);
+                setScenesMessage(cache.cached ? '' : 'まだシーン一覧のキャッシュがありません。再取得してください。');
+            })
+            .catch((error) => {
+                setScenesMessage(error instanceof Error ? error.message : String(error));
+            });
+    }
+
     function refreshDevices() {
         setIsRefreshing(true);
         setDevicesMessage('');
@@ -98,6 +115,21 @@ function App() {
                 setDevicesMessage(error instanceof Error ? error.message : String(error));
             })
             .finally(() => setIsRefreshing(false));
+    }
+
+    function refreshScenes() {
+        setIsRefreshingScenes(true);
+        setScenesMessage('');
+
+        RefreshSwitchBotScenes()
+            .then((cache) => {
+                setSceneList(cache);
+                setScenesMessage(`シーン一覧を更新しました。${formatCachedAt(cache.cachedAt)}`);
+            })
+            .catch((error) => {
+                setScenesMessage(error instanceof Error ? error.message : String(error));
+            })
+            .finally(() => setIsRefreshingScenes(false));
     }
 
     function saveCredentials(event: FormEvent<HTMLFormElement>) {
@@ -133,6 +165,7 @@ function App() {
                 setToken('');
                 setSecret('');
                 setDeviceList(new main.SwitchBotDeviceList());
+                setSceneList(new main.SwitchBotSceneList());
                 setSettingsMessage('認証情報とキャッシュを削除しました。');
                 setView('settings');
             })
@@ -165,6 +198,9 @@ function App() {
                 <nav className="nav-tabs" aria-label="Primary">
                     <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')} disabled={!credentialsSaved}>
                         Devices
+                    </button>
+                    <button className={view === 'scenes' ? 'active' : ''} onClick={() => setView('scenes')} disabled={!credentialsSaved}>
+                        Scenes
                     </button>
                     <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
                         Settings
@@ -220,6 +256,50 @@ function App() {
                             <div>Config path: {configPath}</div>
                         </div>
                     )}
+                </main>
+            ) : view === 'scenes' ? (
+                <main className="devices-panel">
+                    <section className="devices-header">
+                        <div>
+                            <h1>Scenes</h1>
+                            <p>Cached at: {formatCachedAt(sceneList.cachedAt)}</p>
+                        </div>
+                        <button className="btn primary" onClick={refreshScenes} disabled={!credentialsSaved || isRefreshingScenes}>
+                            {isRefreshingScenes ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                    </section>
+
+                    {scenesMessage && <div className="settings-message">{scenesMessage}</div>}
+
+                    <section className="device-summary" aria-label="Scene summary">
+                        <div>
+                            <span>{sceneList.scenes?.length ?? 0}</span>
+                            Scenes
+                        </div>
+                    </section>
+
+                    <div className="device-table-wrap">
+                        <table className="device-table scene-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Scene ID</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {(sceneList.scenes?.length ?? 0) === 0 ? (
+                                <tr>
+                                    <td colSpan={2} className="empty-cell">シーンはまだ表示されていません。</td>
+                                </tr>
+                            ) : sceneList.scenes.map((scene) => (
+                                <tr key={scene.sceneId}>
+                                    <td>{scene.sceneName || '-'}</td>
+                                    <td className="mono">{scene.sceneId || '-'}</td>
+                                </tr>
+                            ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </main>
             ) : (
                 <main className="devices-panel">

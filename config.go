@@ -31,6 +31,7 @@ type appConfig struct {
 	Version     int                  `json:"version"`
 	SwitchBot   switchBotConfig      `json:"switchbot"`
 	DeviceCache SwitchBotDeviceCache `json:"deviceCache,omitempty"`
+	SceneCache  SwitchBotSceneCache  `json:"sceneCache,omitempty"`
 }
 
 type switchBotConfig struct {
@@ -124,6 +125,28 @@ func (s *configStore) LoadSwitchBotDeviceCache() (SwitchBotDeviceCache, error) {
 		return SwitchBotDeviceCache{}, os.ErrNotExist
 	}
 	return cfg.DeviceCache, nil
+}
+
+func (s *configStore) SaveSwitchBotSceneCache(cache SwitchBotSceneCache) error {
+	cfg, err := s.loadOrDefault()
+	if err != nil {
+		return err
+	}
+
+	cfg.Version = configVersion
+	cfg.SceneCache = cache
+	return s.save(cfg)
+}
+
+func (s *configStore) LoadSwitchBotSceneCache() (SwitchBotSceneCache, error) {
+	cfg, err := s.load()
+	if err != nil {
+		return SwitchBotSceneCache{}, err
+	}
+	if cfg.SceneCache.CachedAt == "" {
+		return SwitchBotSceneCache{}, os.ErrNotExist
+	}
+	return cfg.SceneCache, nil
 }
 
 func (s *configStore) loadOrDefault() (appConfig, error) {

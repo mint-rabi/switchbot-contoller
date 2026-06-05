@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-const switchBotDevicesURL = "https://api.switch-bot.com/v1.1/devices"
+const (
+	switchBotDevicesURL = "https://api.switch-bot.com/v1.1/devices"
+	switchBotScenesURL  = "https://api.switch-bot.com/v1.1/scenes"
+)
 
 type SwitchBotDeviceCache struct {
 	Devices         []SwitchBotDevice         `json:"devices"`
@@ -27,6 +30,17 @@ type SwitchBotDeviceList struct {
 	InfraredRemotes []SwitchBotInfraredRemote `json:"infraredRemotes"`
 	CachedAt        string                    `json:"cachedAt"`
 	Cached          bool                      `json:"cached"`
+}
+
+type SwitchBotSceneCache struct {
+	Scenes   []SwitchBotScene `json:"scenes"`
+	CachedAt string           `json:"cachedAt"`
+}
+
+type SwitchBotSceneList struct {
+	Scenes   []SwitchBotScene `json:"scenes"`
+	CachedAt string           `json:"cachedAt"`
+	Cached   bool             `json:"cached"`
 }
 
 type SwitchBotDevice struct {
@@ -44,6 +58,11 @@ type SwitchBotInfraredRemote struct {
 	HubDeviceID string `json:"hubDeviceId"`
 }
 
+type SwitchBotScene struct {
+	SceneID   string `json:"sceneId"`
+	SceneName string `json:"sceneName"`
+}
+
 type switchBotAPIResponse struct {
 	StatusCode int                 `json:"statusCode"`
 	Message    string              `json:"message"`
@@ -53,6 +72,12 @@ type switchBotAPIResponse struct {
 type switchBotDeviceBody struct {
 	DeviceList         []SwitchBotDevice         `json:"deviceList"`
 	InfraredRemoteList []SwitchBotInfraredRemote `json:"infraredRemoteList"`
+}
+
+type switchBotSceneAPIResponse struct {
+	StatusCode int              `json:"statusCode"`
+	Message    string           `json:"message"`
+	Body       []SwitchBotScene `json:"body"`
 }
 
 type switchBotClient struct {
@@ -66,35 +91,9 @@ func newSwitchBotClient() *switchBotClient {
 }
 
 func (c *switchBotClient) FetchDevices(credentials SwitchBotCredentials) (SwitchBotDeviceCache, error) {
-	req, err := http.NewRequest(http.MethodGet, switchBotDevicesURL, nil)
-	if err != nil {
-		return SwitchBotDeviceCache{}, fmt.Errorf("create request: %w", err)
-	}
-
-	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	nonce, err := newNonce()
-	if err != nil {
-		return SwitchBotDeviceCache{}, fmt.Errorf("create nonce: %w", err)
-	}
-
-	req.Header.Set("Authorization", credentials.Token)
-	req.Header.Set("sign", switchBotSign(credentials.Token, credentials.Secret, timestamp, nonce))
-	req.Header.Set("t", timestamp)
-	req.Header.Set("nonce", nonce)
-	req.Header.Set("Content-Type", "application/json; charset=utf8")
-
-	resp, err := c.httpClient.Do(req)
+	body, err := c.get(credentials, switchBotDevicesURL)
 	if err != nil {
 		return SwitchBotDeviceCache{}, fmt.Errorf("request switchbot devices: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return SwitchBotDeviceCache{}, fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return SwitchBotDeviceCache{}, fmt.Errorf("switchbot api returned HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var apiResp switchBotAPIResponse
@@ -110,6 +109,60 @@ func (c *switchBotClient) FetchDevices(credentials SwitchBotCredentials) (Switch
 		InfraredRemotes: apiResp.Body.InfraredRemoteList,
 		CachedAt:        time.Now().Format(time.RFC3339),
 	}, nil
+}
+
+func (c *switchBotClient) FetchScenes(credentials SwitchBotCredentials) (SwitchBotSceneCache, error) {
+	body, err := c.get(credentials, switchBotScenesURL)
+	if err != nil {
+		return SwitchBotSceneCache{}, fmt.Errorf("request switchbot scenes: %w", err)
+	}
+
+	var apiResp switchBotSceneAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return SwitchBotSceneCache{}, fmt.Errorf("parse response: %w", err)
+	}
+	if apiResp.StatusCode != 100 {
+		return SwitchBotSceneCache{}, fmt.Errorf("switchbot api returned status %d: %s", apiResp.StatusCode, apiResp.Message)
+	}
+
+	return SwitchBotSceneCache{
+		Scenes:   apiResp.Body,
+		CachedAt: time.Now().Format(time.RFC3339),
+	}, nil
+}
+
+func (c *switchBotClient) get(credentials SwitchBotCredentials, url string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	nonce, err := newNonce()
+	if err != nil {
+		return nil, fmt.Errorf("create nonce: %w", err)
+	}
+
+	req.Header.Set("Authorization", credentials.Token)
+	req.Header.Set("sign", switchBotSign(credentials.Token, credentials.Secret, timestamp, nonce))
+	req.Header.Set("t", timestamp)
+	req.Header.Set("nonce", nonce)
+	req.Header.Set("Content-Type", "application/json; charset=utf8")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("switchbot api returned HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return body, nil
 }
 
 func switchBotSign(token string, secret string, timestamp string, nonce string) string {

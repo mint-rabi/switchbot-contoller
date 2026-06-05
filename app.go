@@ -111,6 +111,54 @@ func (a *App) RefreshSwitchBotDevices() (SwitchBotDeviceList, error) {
 	}, nil
 }
 
+func (a *App) GetCachedSwitchBotScenes() (SwitchBotSceneList, error) {
+	if a.config == nil {
+		return SwitchBotSceneList{}, fmt.Errorf("config store is not available")
+	}
+
+	cache, err := a.config.LoadSwitchBotSceneCache()
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return SwitchBotSceneList{}, err
+		}
+		return SwitchBotSceneList{Cached: false}, nil
+	}
+
+	return SwitchBotSceneList{
+		Scenes:   cache.Scenes,
+		CachedAt: cache.CachedAt,
+		Cached:   true,
+	}, nil
+}
+
+func (a *App) RefreshSwitchBotScenes() (SwitchBotSceneList, error) {
+	if a.config == nil {
+		return SwitchBotSceneList{}, fmt.Errorf("config store is not available")
+	}
+	if a.client == nil {
+		a.client = newSwitchBotClient()
+	}
+
+	credentials, err := a.config.LoadSwitchBotCredentials()
+	if err != nil {
+		return SwitchBotSceneList{}, err
+	}
+
+	cache, err := a.client.FetchScenes(credentials)
+	if err != nil {
+		return SwitchBotSceneList{}, err
+	}
+	if err := a.config.SaveSwitchBotSceneCache(cache); err != nil {
+		return SwitchBotSceneList{}, err
+	}
+
+	return SwitchBotSceneList{
+		Scenes:   cache.Scenes,
+		CachedAt: cache.CachedAt,
+		Cached:   true,
+	}, nil
+}
+
 func (a *App) OpenConfigFolder() error {
 	if a.config == nil {
 		return fmt.Errorf("config store is not available")

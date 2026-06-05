@@ -6,6 +6,8 @@ export function ClearSwitchBotCredentials():Promise<void>;
 
 export function GetCachedSwitchBotDevices():Promise<main.SwitchBotDeviceList>;
 
+export function GetCachedSwitchBotScenes():Promise<main.SwitchBotSceneList>;
+
 export function GetSwitchBotCredentialStatus():Promise<main.CredentialStatus>;
 
 export function Greet(arg1:string):Promise<string>;
@@ -13,5 +15,7 @@ export function Greet(arg1:string):Promise<string>;
 export function OpenConfigFolder():Promise<void>;
 
 export function RefreshSwitchBotDevices():Promise<main.SwitchBotDeviceList>;
+
+export function RefreshSwitchBotScenes():Promise<main.SwitchBotSceneList>;
 
 export function SaveSwitchBotCredentials(arg1:string,arg2:string):Promise<void>;

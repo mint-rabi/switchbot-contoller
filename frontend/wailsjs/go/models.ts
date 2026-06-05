@@ -92,6 +92,55 @@ export namespace main {
 		    return a;
 		}
 	}
+	
+	export class SwitchBotScene {
+	    sceneId: string;
+	    sceneName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SwitchBotScene(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sceneId = source["sceneId"];
+	        this.sceneName = source["sceneName"];
+	    }
+	}
+	export class SwitchBotSceneList {
+	    scenes: SwitchBotScene[];
+	    cachedAt: string;
+	    cached: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SwitchBotSceneList(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scenes = this.convertValues(source["scenes"], SwitchBotScene);
+	        this.cachedAt = source["cachedAt"];
+	        this.cached = source["cached"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

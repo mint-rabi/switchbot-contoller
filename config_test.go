@@ -72,3 +72,34 @@ func TestConfigStorePreservesDeviceCacheWhenSavingCredentials(t *testing.T) {
 		t.Fatalf("cache = %#v, want preserved cache", got)
 	}
 }
+
+func TestConfigStorePreservesSceneCacheWhenSavingDeviceCache(t *testing.T) {
+	store := &configStore{
+		path: filepath.Join(t.TempDir(), configFileName),
+	}
+
+	sceneCache := SwitchBotSceneCache{
+		CachedAt: "2026-06-05T11:00:00+09:00",
+		Scenes: []SwitchBotScene{
+			{SceneID: "scene-1", SceneName: "Good night"},
+		},
+	}
+
+	if err := store.SaveSwitchBotSceneCache(sceneCache); err != nil {
+		t.Fatalf("SaveSwitchBotSceneCache() error = %v", err)
+	}
+	if err := store.SaveSwitchBotDeviceCache(SwitchBotDeviceCache{
+		CachedAt: "2026-06-05T12:00:00+09:00",
+		Devices:  []SwitchBotDevice{{DeviceID: "device-1"}},
+	}); err != nil {
+		t.Fatalf("SaveSwitchBotDeviceCache() error = %v", err)
+	}
+
+	got, err := store.LoadSwitchBotSceneCache()
+	if err != nil {
+		t.Fatalf("LoadSwitchBotSceneCache() error = %v", err)
+	}
+	if got.CachedAt != sceneCache.CachedAt || len(got.Scenes) != 1 {
+		t.Fatalf("cache = %#v, want preserved scene cache", got)
+	}
+}
