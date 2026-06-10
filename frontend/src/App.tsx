@@ -15,7 +15,12 @@ import {
 import {main} from "../wailsjs/go/models";
 
 type View = 'devices' | 'scenes' | 'settings';
+type ListPreferences = {
+    order: string[];
+    hidden: string[];
+};
 type DeviceRow = {
+    key: string;
     id: string;
     name: string;
     type: string;
@@ -24,6 +29,12 @@ type DeviceRow = {
     cloud?: boolean;
     powerControllable: boolean;
 };
+type SceneRow = main.SwitchBotScene & {
+    key: string;
+};
+
+const DEVICE_PREFS_KEY = 'switchbot-controller.devices.preferences';
+const SCENE_PREFS_KEY = 'switchbot-controller.scenes.preferences';
 
 function App() {
     const [view, setView] = useState<View>('devices');
@@ -42,6 +53,10 @@ function App() {
     const [executingDeviceAction, setExecutingDeviceAction] = useState('');
     const [deviceList, setDeviceList] = useState<main.SwitchBotDeviceList>(new main.SwitchBotDeviceList());
     const [sceneList, setSceneList] = useState<main.SwitchBotSceneList>(new main.SwitchBotSceneList());
+    const [devicePreferences, setDevicePreferences] = useState<ListPreferences>(() => loadListPreferences(DEVICE_PREFS_KEY));
+    const [scenePreferences, setScenePreferences] = useState<ListPreferences>(() => loadListPreferences(SCENE_PREFS_KEY));
+    const [showHiddenDevices, setShowHiddenDevices] = useState(false);
+    const [showHiddenScenes, setShowHiddenScenes] = useState(false);
 
     useEffect(() => {
         refreshCredentialStatus(true);
@@ -51,6 +66,7 @@ function App() {
 
     const rows = useMemo<DeviceRow[]>(() => {
         const devices = (deviceList.devices ?? []).map((device) => ({
+            key: `device:${device.deviceId}`,
             id: device.deviceId,
             name: device.deviceName,
             type: device.deviceType,
@@ -60,6 +76,7 @@ function App() {
             powerControllable: isPowerControllable('Device', device.deviceType)
         }));
         const infraredRemotes = (deviceList.infraredRemotes ?? []).map((remote) => ({
+            key: `remote:${remote.deviceId}`,
             id: remote.deviceId,
             name: remote.deviceName,
             type: remote.remoteType,
@@ -69,6 +86,37 @@ function App() {
         }));
         return [...devices, ...infraredRemotes];
     }, [deviceList]);
+
+    const orderedRows = useMemo(() => orderItems(rows, devicePreferences.order, (row) => row.key), [rows, devicePreferences.order]);
+    const visibleRows = useMemo(
+        () => orderedRows.filter((row) => showHiddenDevices || !devicePreferences.hidden.includes(row.key)),
+        [orderedRows, showHiddenDevices, devicePreferences.hidden]
+    );
+    const hiddenDeviceCount = useMemo(
+        () => rows.filter((row) => devicePreferences.hidden.includes(row.key)).length,
+        [rows, devicePreferences.hidden]
+    );
+    const sceneRows = useMemo<SceneRow[]>(
+        () => (sceneList.scenes ?? []).map((scene) => ({...scene, key: `scene:${scene.sceneId}`})),
+        [sceneList]
+    );
+    const orderedScenes = useMemo(() => orderItems(sceneRows, scenePreferences.order, (scene) => scene.key), [sceneRows, scenePreferences.order]);
+    const visibleScenes = useMemo(
+        () => orderedScenes.filter((scene) => showHiddenScenes || !scenePreferences.hidden.includes(scene.key)),
+        [orderedScenes, showHiddenScenes, scenePreferences.hidden]
+    );
+    const hiddenSceneCount = useMemo(
+        () => sceneRows.filter((scene) => scenePreferences.hidden.includes(scene.key)).length,
+        [sceneRows, scenePreferences.hidden]
+    );
+
+    useEffect(() => {
+        persistListPreferences(DEVICE_PREFS_KEY, devicePreferences);
+    }, [devicePreferences]);
+
+    useEffect(() => {
+        persistListPreferences(SCENE_PREFS_KEY, scenePreferences);
+    }, [scenePreferences]);
 
     function isPowerControllable(category: DeviceRow['category'], type: string) {
         const normalizedType = type.toLowerCase();
@@ -186,6 +234,34 @@ function App() {
                 setDevicesMessage(error instanceof Error ? error.message : String(error));
             })
             .finally(() => setExecutingDeviceAction(''));
+    }
+
+    function moveDevice(rowKey: string, direction: -1 | 1) {
+        setDevicePreferences((preferences) => ({
+            ...preferences,
+            order: moveKeyInOrder(orderedRows.map((row) => row.key), rowKey, direction)
+        }));
+    }
+
+    function moveScene(sceneKey: string, direction: -1 | 1) {
+        setScenePreferences((preferences) => ({
+            ...preferences,
+            order: moveKeyInOrder(orderedScenes.map((scene) => scene.key), sceneKey, direction)
+        }));
+    }
+
+    function setDeviceHidden(rowKey: string, hidden: boolean) {
+        setDevicePreferences((preferences) => ({
+            ...preferences,
+            hidden: updateHiddenKeys(preferences.hidden, rowKey, hidden)
+        }));
+    }
+
+    function setSceneHidden(sceneKey: string, hidden: boolean) {
+        setScenePreferences((preferences) => ({
+            ...preferences,
+            hidden: updateHiddenKeys(preferences.hidden, sceneKey, hidden)
+        }));
     }
 
     function saveCredentials(event: FormEvent<HTMLFormElement>) {
@@ -329,29 +405,54 @@ function App() {
 
                     <section className="device-summary" aria-label="Scene summary">
                         <div>
-                            <span>{sceneList.scenes?.length ?? 0}</span>
+                            <span>{visibleScenes.length}</span>
                             Scenes
                         </div>
+                        <div>
+                            <span>{hiddenSceneCount}</span>
+                            Hidden
+                        </div>
                     </section>
+
+                    <div className="list-tools">
+                        <label className="inline-check">
+                            <input
+                                type="checkbox"
+                                checked={showHiddenScenes}
+                                onChange={(event) => setShowHiddenScenes(event.target.checked)}
+                            />
+                            Show hidden
+                        </label>
+                    </div>
 
                     <div className="device-table-wrap">
                         <table className="device-table scene-table">
                             <thead>
                             <tr>
                                 <th>Name</th>
-                                <th>Scene ID</th>
+                                <th>Order</th>
                                 <th>Action</th>
+                                <th>Visibility</th>
                             </tr>
                             </thead>
                             <tbody>
-                            {(sceneList.scenes?.length ?? 0) === 0 ? (
+                            {visibleScenes.length === 0 ? (
                                 <tr>
-                                    <td colSpan={3} className="empty-cell">シーンはまだ表示されていません。</td>
+                                    <td colSpan={4} className="empty-cell">シーンはまだ表示されていません。</td>
                                 </tr>
-                            ) : sceneList.scenes.map((scene) => (
-                                <tr key={scene.sceneId}>
+                            ) : visibleScenes.map((scene) => (
+                                <tr key={scene.key} className={scenePreferences.hidden.includes(scene.key) ? 'is-hidden-row' : ''}>
                                     <td>{scene.sceneName || '-'}</td>
-                                    <td className="mono">{scene.sceneId || '-'}</td>
+                                    <td>
+                                        <div className="row-actions">
+                                            <button className="btn icon-action" onClick={() => moveScene(scene.key, -1)} aria-label={`${scene.sceneName || 'Scene'} を上へ移動`}>
+                                                Up
+                                            </button>
+                                            <button className="btn icon-action" onClick={() => moveScene(scene.key, 1)} aria-label={`${scene.sceneName || 'Scene'} を下へ移動`}>
+                                                Down
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td>
                                         <button
                                             className="btn table-action"
@@ -359,6 +460,14 @@ function App() {
                                             disabled={!credentialsSaved || executingSceneId === scene.sceneId}
                                         >
                                             {executingSceneId === scene.sceneId ? 'Running...' : 'Run'}
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <button
+                                            className="btn table-action"
+                                            onClick={() => setSceneHidden(scene.key, !scenePreferences.hidden.includes(scene.key))}
+                                        >
+                                            {scenePreferences.hidden.includes(scene.key) ? 'Show' : 'Hide'}
                                         </button>
                                     </td>
                                 </tr>
@@ -383,14 +492,29 @@ function App() {
 
                     <section className="device-summary" aria-label="Device summary">
                         <div>
-                            <span>{deviceList.devices?.length ?? 0}</span>
+                            <span>{visibleRows.filter((row) => row.category === 'Device').length}</span>
                             Devices
                         </div>
                         <div>
-                            <span>{deviceList.infraredRemotes?.length ?? 0}</span>
+                            <span>{visibleRows.filter((row) => row.category === 'IR Remote').length}</span>
                             IR Remotes
                         </div>
+                        <div>
+                            <span>{hiddenDeviceCount}</span>
+                            Hidden
+                        </div>
                     </section>
+
+                    <div className="list-tools">
+                        <label className="inline-check">
+                            <input
+                                type="checkbox"
+                                checked={showHiddenDevices}
+                                onChange={(event) => setShowHiddenDevices(event.target.checked)}
+                            />
+                            Show hidden
+                        </label>
+                    </div>
 
                     <div className="device-table-wrap">
                         <table className="device-table">
@@ -401,17 +525,17 @@ function App() {
                                 <th>Category</th>
                                 <th>Cloud</th>
                                 <th>Power</th>
-                                <th>Device ID</th>
-                                <th>Hub ID</th>
+                                <th>Order</th>
+                                <th>Visibility</th>
                             </tr>
                             </thead>
                             <tbody>
-                            {rows.length === 0 ? (
+                            {visibleRows.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="empty-cell">デバイスはまだ表示されていません。</td>
                                 </tr>
-                            ) : rows.map((row) => (
-                                <tr key={`${row.category}-${row.id}`}>
+                            ) : visibleRows.map((row) => (
+                                <tr key={row.key} className={devicePreferences.hidden.includes(row.key) ? 'is-hidden-row' : ''}>
                                     <td>{row.name || '-'}</td>
                                     <td>{row.type || '-'}</td>
                                     <td>{row.category}</td>
@@ -438,8 +562,24 @@ function App() {
                                             <span className="muted-text">Power unavailable</span>
                                         )}
                                     </td>
-                                    <td className="mono">{row.id || '-'}</td>
-                                    <td className="mono">{row.hubDeviceId || '-'}</td>
+                                    <td>
+                                        <div className="row-actions">
+                                            <button className="btn icon-action" onClick={() => moveDevice(row.key, -1)} aria-label={`${row.name || 'Device'} を上へ移動`}>
+                                                Up
+                                            </button>
+                                            <button className="btn icon-action" onClick={() => moveDevice(row.key, 1)} aria-label={`${row.name || 'Device'} を下へ移動`}>
+                                                Down
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <button
+                                            className="btn table-action"
+                                            onClick={() => setDeviceHidden(row.key, !devicePreferences.hidden.includes(row.key))}
+                                        >
+                                            {devicePreferences.hidden.includes(row.key) ? 'Show' : 'Hide'}
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                             </tbody>
@@ -449,6 +589,54 @@ function App() {
             )}
         </div>
     );
+}
+
+function loadListPreferences(storageKey: string): ListPreferences {
+    try {
+        const saved = localStorage.getItem(storageKey);
+        if (!saved) {
+            return {order: [], hidden: []};
+        }
+        const parsed = JSON.parse(saved) as Partial<ListPreferences>;
+        return {
+            order: Array.isArray(parsed.order) ? parsed.order.filter((key) => typeof key === 'string') : [],
+            hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter((key) => typeof key === 'string') : []
+        };
+    } catch {
+        return {order: [], hidden: []};
+    }
+}
+
+function persistListPreferences(storageKey: string, preferences: ListPreferences) {
+    localStorage.setItem(storageKey, JSON.stringify(preferences));
+}
+
+function orderItems<T>(items: T[], preferredOrder: string[], getKey: (item: T) => string) {
+    const itemByKey = new Map(items.map((item) => [getKey(item), item]));
+    const ordered = preferredOrder.flatMap((key) => {
+        const item = itemByKey.get(key);
+        return item ? [item] : [];
+    });
+    const orderedKeys = new Set(ordered.map(getKey));
+    return [...ordered, ...items.filter((item) => !orderedKeys.has(getKey(item)))];
+}
+
+function moveKeyInOrder(currentOrder: string[], key: string, direction: -1 | 1) {
+    const nextOrder = [...currentOrder];
+    const index = nextOrder.indexOf(key);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= nextOrder.length) {
+        return nextOrder;
+    }
+    [nextOrder[index], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[index]];
+    return nextOrder;
+}
+
+function updateHiddenKeys(hiddenKeys: string[], key: string, hidden: boolean) {
+    if (hidden) {
+        return hiddenKeys.includes(key) ? hiddenKeys : [...hiddenKeys, key];
+    }
+    return hiddenKeys.filter((hiddenKey) => hiddenKey !== key);
 }
 
 export default App

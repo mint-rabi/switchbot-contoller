@@ -151,7 +151,7 @@
 
 .device-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 180px));
+    grid-template-columns: repeat(3, minmax(0, 180px));
     gap: 12px;
     margin: 26px 0 16px;
 }
@@ -171,6 +171,26 @@
     font-weight: 700;
 }
 
+.list-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 10px;
+}
+
+.inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 14px;
+}
+
+.inline-check input {
+    width: 16px;
+    height: 16px;
+    accent-color: #77d3a8;
+}
+
 .device-table-wrap {
     overflow-x: auto;
     border: 1px solid rgba(255, 255, 255, 0.16);
@@ -179,7 +199,7 @@
 
 .device-table {
     width: 100%;
-    min-width: 980px;
+    min-width: 860px;
     border-collapse: collapse;
     background: rgba(255, 255, 255, 0.05);
 }
@@ -210,6 +230,10 @@
     border-bottom: none;
 }
 
+.device-table tr.is-hidden-row td {
+    color: rgba(255, 255, 255, 0.48);
+}
+
 .mono {
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 13px;
@@ -229,9 +253,21 @@
     border: 1px solid rgba(255, 255, 255, 0.22);
 }
 
+.row-actions,
 .power-actions {
     display: flex;
     gap: 8px;
+}
+
+.row-actions {
+    flex-wrap: wrap;
+}
+
+.icon-action {
+    min-width: 62px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .power-actions .table-action {
